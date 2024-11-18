@@ -42,21 +42,25 @@ $tokenResponse = file_get_contents($tokenUrl, false, stream_context_create([
 $tokenData = json_decode($tokenResponse, true);
 $accessToken = $tokenData['access_token'];
 
-// Step 2: Use the access token to interact with the Google Analytics Admin API
-$propertyId = 'YOUR_PROPERTY_ID'; // Replace with your property ID
+// GA4 Property ID
+$propertyId = 'YOUR_PROPERTY_ID';
 
-$customDimensions = [
-    [
-        'parameterName' => 'custom_dimension_1',
-        'displayName' => 'Dimension 1',
+// ASC recommended custom dimensions
+$ascCustomDimensions = array("affiliation", "comm_outcome", "comm_status", "comm_type", "currency", "department", "element_text", "element_type", "element_type", "element_value", "event_action", "event_action_result", "event_owner", "flow_name", "flow_outcome", "form_name", "form_type", "item_category", "item_color", "item_condition", "item_fuel_type", "item_id", "item_make", "item_model", "item_number", "item_payment", "item_price", "item_type", "item_variant", "item_year", "media_type", "page_location", "page_type", "product_name", "promotion_name");
+
+// Empty array that will store the custom dimensions pushed to GA4
+$customDimensions = [];
+
+// Loop through the list of recommended ASC custom dimensions and push them to the $customDimensions array
+foreach ($ascCustomDimensions as $ascDimension) {
+    array_push($customDimensions, [
+        'parameterName' => $ascDimension,
+        'displayName' => $ascDimension,
+        'description' => $ascDimension,
         'scope' => 'EVENT'
-    ],
-    [
-        'parameterName' => 'custom_dimension_2',
-        'displayName' => 'Dimension 2',
-        'scope' => 'EVENT'
-    ]
-];
+    ] );
+}
+
 
 foreach ($customDimensions as $dimension) {
     $response = file_get_contents(
@@ -79,5 +83,4 @@ foreach ($customDimensions as $dimension) {
         echo "Custom dimension created: " . $responseData['name'] . "<br>";
     }
 }
-echo "hello world";
-?>
+
