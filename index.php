@@ -1,86 +1,89 @@
 <?php
 
+// Composer autoload file for packages
 require 'vendor/autoload.php';
-require 'google-oauth.php';
 
-use Google\Analytics\Admin\V1beta\Account;
-use Google\Analytics\Admin\V1beta\Client\AnalyticsAdminServiceClient;
-use Google\Analytics\Admin\V1beta\ListAccountsRequest;
+// Imports the recommended Google packages
+use Google\Client;
+use Google\Service\AnalyticsAdmin;
 
-//$property_id = '466446057';
+// Test to see if classes are loading properly
+if (class_exists('Google\Service\AnalyticsAdmin')) {
+    echo "AnalyticsAdmin class found!";
+    exit;
+} else {
+    echo "AnalyticsAdmin class not found!";
+    exit;
+}
 
-// Service account JSON file
-$serviceAccountFile = '/Applications/XAMPP/xamppfiles/htdocs/ga4-auto-add-custom-dimensions/reach-analytics2.json';
-$credentials = json_decode(file_get_contents($serviceAccountFile), true);
+// Service account file path
+$serviceAccountFile = 'C:\laragon\www\ga4-auto-add-custom-dimensions\reach-analytics2.json';
 
-// Service account information
-$privateKey = $credentials['private_key']; # Taken from service account JSON file
-$clientEmail = $credentials['client_email']; # Taken from service account JSON file
-$tokenUrl = 'https://oauth2.googleapis.com/token';
+// Check that the service account file exists and throw exception if not
+if (!file_exists($serviceAccountFile)) {
+    throw new Exception("Service account file not found at $serviceAccountFile");
+}
 
-// Create a JSON Web Token (JWT) header
-$jwtHeader = createJwtHeader();
+// Create a new client instance
+$client = new Client();
 
-// Create a JWT payload
-$jwtPayload = createJwtPayload($clientEmail, $tokenUrl);
+// Try to set up new $client and exit if this isn't successful
+try {
+    // Set authentication configuration using the service account JSON file
+    $client->setAuthConfig($serviceAccountFile);
 
-// Create the JWT
-$jwt = createJwt($jwtHeader, $jwtPayload, $privateKey);
+    // Give 'edit' access to this client instance
+    $client->addScope(AnalyticsAdmin::ANALYTICS_EDIT);
 
-// Make a POST request to get an access token
-$tokenResponse = file_get_contents($tokenUrl, false, stream_context_create([
-    'http' => [
-        'method' => 'POST',
-        'header' => 'Content-Type: application/x-www-form-urlencoded',
-        'content' => http_build_query([
-            'grant_type' => 'urn:ietf:params:oauth:grant-type:jwt-bearer',
-            'assertion' => $jwt
-        ])
-    ]
-]));
+} catch (Exception $e) {
+    // Display exception message
+    echo "Error setting up authentication configuration: " . $e->getMessage() . "<br>";
 
-$tokenData = json_decode($tokenResponse, true);
-$accessToken = $tokenData['access_token'];
+    // Stop script if authentication configuration fails
+    exit;
+}
 
-// GA4 Property ID
-$propertyId = 'YOUR_PROPERTY_ID';
+// Create an instance of the AnalyticsAdmin service
+$analyticsAdminService = new AnalyticsAdmin($client);
 
-// ASC recommended custom dimensions
+// The Google Analytics property ID to which the custom dimensions should be added
+// This will be done manually to start but should take an input form instead for the team to use
+$propertyId = 'properties/466420105';
+
+// Validate that the property ID format is correct
+try {
+    if (strpos($propertyId, 'properties/') !== 0) {
+        throw new Exception("Invalid property ID format. It needs to start with 'properties/'.");
+    }
+} catch (Exception $e) {
+    echo "Validation error: " . $e->getMessage() . "<br>";
+    exit; // Stop script if property ID is invalid
+}
+
+// ASC recommended custom dimensions to add
 $ascCustomDimensions = array("affiliation", "comm_outcome", "comm_status", "comm_type", "currency", "department", "element_text", "element_type", "element_type", "element_value", "event_action", "event_action_result", "event_owner", "flow_name", "flow_outcome", "form_name", "form_type", "item_category", "item_color", "item_condition", "item_fuel_type", "item_id", "item_make", "item_model", "item_number", "item_payment", "item_price", "item_type", "item_variant", "item_year", "media_type", "page_location", "page_type", "product_name", "promotion_name");
 
 // Empty array that will store the custom dimensions pushed to GA4
 $customDimensions = [];
 
-// Loop through the list of recommended ASC custom dimensions and push them to the $customDimensions array
+// Iterate over each recommended ASC custom dimension and push them to the $customDimensions array
 foreach ($ascCustomDimensions as $ascDimension) {
-    array_push($customDimensions, [
+    $customDimensions[] = [
         'parameterName' => $ascDimension,
         'displayName' => $ascDimension,
         'description' => $ascDimension,
         'scope' => 'EVENT'
-    ] );
+    ];
 }
 
+// Iterate over each custom dimension and create them
+foreach ($customDimensions as $dimensionData) {
+    $customDimension = new AnalyticsAdmin\GoogleAnalyticsAdminV1betaCustomDimension($dimensionData);
 
-foreach ($customDimensions as $dimension) {
-    $response = file_get_contents(
-        "https://analyticsadmin.googleapis.com/v1beta/properties/$propertyId/customDimensions",
-        false,
-        stream_context_create([
-            'http' => [
-                'method' => 'POST',
-                'header' => "Authorization: Bearer $accessToken\r\n" .
-                    "Content-Type: application/json\r\n",
-                'content' => json_encode($dimension)
-            ]
-        ])
-    );
-    
-    $responseData = json_decode($response, true);
-    if (isset($responseData['error'])) {
-        echo "Error creating custom dimension: " . $responseData['error']['message'] . "<br>";
-    } else {
-        echo "Custom dimension created: " . $responseData['name'] . "<br>";
+    try {
+        $response = $analyticsAdminService->properties_customDimensions->create($propertyId, $customDimension);
+        echo "Custom dimension created: " . $response->getName() . "<br>";
+    } catch (Exception $e) {
+        echo "Error creating custom dimension: " . $e->getMessage() . "<br>";
     }
 }
-
